@@ -1,0 +1,53 @@
+
+
+&star_job
+
+  create_pre_main_sequence_model = .true.
+
+  save_model_when_terminate = .true.
+  save_model_filename = 'zams.mod'
+
+  history_columns_file = '/Users/eoin/Documents/Snapshot_Seismic/inversion_tool/inversion_tool/data/inputs/template_buildastar/history_columns.list'
+  profile_columns_file = '/Users/eoin/Documents/Snapshot_Seismic/inversion_tool/inversion_tool/data/inputs/template_buildastar/profile_columns.list'
+
+/
+
+
+&eos
+
+/
+
+
+&kap
+
+/
+
+
+&controls
+
+  ! Initial conditions
+  initial_mass = 3.5
+  initial_z = 0.014
+
+  ! Stopping condition
+  Lnuc_div_L_zams_limit = 0.99d0
+  stop_near_zams = .true.
+
+  ! Output settings
+  terminal_interval = 5
+  write_header_frequency = 2
+  log_directory = 'LOGS_prems'
+
+  ! Mixing
+  overshoot_scheme(1) = 'exponential' ! ``exponential``, ``step``, ``other``
+  overshoot_zone_type(1) = 'burn_H' !  ``burn_H``, ``burn_He``, ``burn_Z``, ``nonburn``, ``any``
+  overshoot_zone_loc(1) = 'core' ! ``core``, ``shell``, ``any``
+  overshoot_bdy_loc(1) = 'top' ! ``bottom``, ``top``, ``any``
+  overshoot_f(1) = 0.0228
+  overshoot_f0(1) = 0.002
+
+/
+
+&pgstar
+
+/

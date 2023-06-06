@@ -1,0 +1,64 @@
+f&constants
+/
+
+&model
+  model_type = 'EVOL'
+  file = 'evol.mesa'
+  file_format = 'MESA'
+/
+
+
+&mode
+  l = 1
+  tag = 'm=1'
+  m = 1
+  n_pg_min = -100
+/
+
+&osc
+/
+
+&rot
+  coriolis_method = 'NULL'
+  Omega_rot_source = 'UNIFORM'
+  Omega_rot = 0
+  Omega_rot_units = 'CRITICAL'
+/
+
+&num
+  diff_scheme = 'COLLOC_GL4'
+/
+
+
+&scan
+  grid_type = 'INVERSE'
+  grid_frame = 'COROT_I'
+  freq_frame = 'COROT_I'
+  freq_min = 0.1
+  freq_max = 7
+  freq_units = 'CYC_PER_DAY'
+  n_freq = 1300
+  tag_list = 'm=1'
+/
+
+
+&grid
+  w_osc = 10
+  w_exp = 2
+  w_ctr = 10
+/
+
+&ad_output
+  summary_file = 'summary.h5'
+  summary_item_list = 'l,m,n_pg,n_p,n_g,omega,freq,Delta_p,Delta_g,freq_units,freq_frame'
+  
+  detail_template = ''
+  ! detail_template = 'detail.l%l.n%n.m%m.h5'
+  detail_item_list = 'l,m,n_pg,freq,omega,x,xi_r,
+                      xi_h,c_1,As,V_2,Gamma_1'        ! Items to appear in detail files
+  freq_units = 'CYC_PER_DAY'   
+
+/
+
+&nad_output
+/

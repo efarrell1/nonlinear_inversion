@@ -1,0 +1,356 @@
+! ***********************************************************************
+!
+!   Copyright (C) 2010-2019  Bill Paxton & The MESA Team
+!
+!   this file is part of mesa.
+!
+!   mesa is free software; you can redistribute it and/or modify
+!   it under the terms of the gnu general library public license as published
+!   by the free software foundation; either version 2 of the license, or
+!   (at your option) any later version.
+!
+!   mesa is distributed in the hope that it will be useful,
+!   but without any warranty; without even the implied warranty of
+!   merchantability or fitness for a particular purpose.  see the
+!   gnu library general public license for more details.
+!
+!   you should have received a copy of the gnu library general public license
+!   along with this software; if not, write to the free software
+!   foundation, inc., 59 temple place, suite 330, boston, ma 02111-1307 usa
+!
+! ***********************************************************************
+
+      module run_star_extras
+
+      use star_lib
+      use star_def
+      use const_def
+      use math_lib
+
+      implicit none
+
+      ! these routines are called by the standard run_star check_model
+      contains
+
+        subroutine extras_controls(id, ierr)
+           integer, intent(in) :: id
+           integer, intent(out) :: ierr
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+
+           ! this is the place to set any procedure pointers you want to change
+           ! e.g., other_wind, other_mixing, other_energy  (see star_data.inc)
+
+
+           ! the extras functions in this file will not be called
+           ! unless you set their function pointers as done below.
+           ! otherwise we use a null_ version which does nothing (except warn).
+
+           s% extras_startup => extras_startup
+           s% extras_start_step => extras_start_step
+           s% extras_check_model => extras_check_model
+           ! s% extras_finish_step => extras_finish_step
+           s% extras_after_evolve => extras_after_evolve
+           s% how_many_extra_history_columns => how_many_extra_history_columns
+           s% data_for_extra_history_columns => data_for_extra_history_columns
+           s% how_many_extra_profile_columns => how_many_extra_profile_columns
+           s% data_for_extra_profile_columns => data_for_extra_profile_columns
+
+           s% how_many_extra_history_header_items => how_many_extra_history_header_items
+           s% data_for_extra_history_header_items => data_for_extra_history_header_items
+           s% how_many_extra_profile_header_items => how_many_extra_profile_header_items
+           s% data_for_extra_profile_header_items => data_for_extra_profile_header_items
+
+           s% other_adjust_mlt_gradT_fraction => my_adjust_mlt_gradT_fraction
+
+        end subroutine extras_controls
+
+
+      ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+      ! Adjust temperature gradient in overshoot zone to be adiabatic (Pe>1d2) or radiative (Pe<1d-2) based upon the Peclet number,
+      ! with a gradual transition between the two regimes.
+      ! The other hook on the next line needs to be included in run_star_extras to use this routine.
+      ! s% other_adjust_mlt_gradT_fraction => other_adjust_mlt_gradT_fraction_Peclet
+
+      subroutine my_adjust_mlt_gradT_fraction(id, ierr)
+          use chem_def
+          integer, intent(in) :: id
+          integer, intent(out) :: ierr
+          type(star_info), pointer :: s
+          real(dp) :: fraction, Peclet_number, conductivity, Hp       ! f is fraction to compose grad_T = f*grad_ad + (1-f)*grad_rad
+          integer :: h1, k, idx, nz
+          logical, parameter :: DEBUG = .FALSE.
+
+          ierr = 0
+          call star_ptr(id, s, ierr)
+          if (ierr /= 0) return
+          
+          h1 = s% net_iso(ih1)
+          nz = s% nz
+
+          do k = nz, 1, -1
+             if (s% xa(h1, k) - s% xa(h1, nz) .ge. 0.005) then
+                exit
+             end if
+
+             s% adjust_mlt_gradT_fraction(k) = 1
+          end do
+
+
+      end subroutine my_adjust_mlt_gradT_fraction
+
+
+
+        subroutine extras_startup(id, restart, ierr)
+           integer, intent(in) :: id
+           logical, intent(in) :: restart
+           integer, intent(out) :: ierr
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+        end subroutine extras_startup
+
+
+        integer function extras_start_step(id)
+           integer, intent(in) :: id
+           integer :: ierr
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+           extras_start_step = 0
+        end function extras_start_step
+
+
+        ! returns either keep_going, retry, or terminate.
+        integer function extras_check_model(id)
+           integer, intent(in) :: id
+           integer :: ierr
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+           extras_check_model = keep_going
+           if (.false. .and. s% star_mass_h1 < 0.35d0) then
+              ! stop when star hydrogen mass drops to specified level
+              extras_check_model = terminate
+              write(*, *) 'have reached desired hydrogen mass'
+              return
+           end if
+
+
+           ! if you want to check multiple conditions, it can be useful
+           ! to set a different termination code depending on which
+           ! condition was triggered.  MESA provides 9 customizeable
+           ! termination codes, named t_xtra1 .. t_xtra9.  You can
+           ! customize the messages that will be printed upon exit by
+           ! setting the corresponding termination_code_str value.
+           ! termination_code_str(t_xtra1) = 'my termination condition'
+
+           ! by default, indicate where (in the code) MESA terminated
+           if (extras_check_model == terminate) s% termination_code = t_extras_check_model
+        end function extras_check_model
+
+
+        integer function how_many_extra_history_columns(id)
+           integer, intent(in) :: id
+           integer :: ierr
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+           how_many_extra_history_columns = 0
+        end function how_many_extra_history_columns
+
+
+        subroutine data_for_extra_history_columns(id, n, names, vals, ierr)
+           integer, intent(in) :: id, n
+           character (len=maxlen_history_column_name) :: names(n)
+           real(dp) :: vals(n)
+           integer, intent(out) :: ierr
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+
+           ! note: do NOT add the extras names to history_columns.list
+           ! the history_columns.list is only for the built-in history column options.
+           ! it must not include the new column names you are adding here.
+
+
+        end subroutine data_for_extra_history_columns
+
+
+        integer function how_many_extra_profile_columns(id)
+           integer, intent(in) :: id
+           integer :: ierr
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+           how_many_extra_profile_columns = 0
+        end function how_many_extra_profile_columns
+
+
+        subroutine data_for_extra_profile_columns(id, n, nz, names, vals, ierr)
+           integer, intent(in) :: id, n, nz
+           character (len=maxlen_profile_column_name) :: names(n)
+           real(dp) :: vals(nz,n)
+           integer, intent(out) :: ierr
+           type (star_info), pointer :: s
+           integer :: k
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+
+           ! note: do NOT add the extra names to profile_columns.list
+           ! the profile_columns.list is only for the built-in profile column options.
+           ! it must not include the new column names you are adding here.
+
+           ! here is an example for adding a profile column
+           !if (n /= 1) stop 'data_for_extra_profile_columns'
+           !names(1) = 'beta'
+           !do k = 1, nz
+           !   vals(k,1) = s% Pgas(k)/s% P(k)
+           !end do
+
+        end subroutine data_for_extra_profile_columns
+
+
+        integer function how_many_extra_history_header_items(id)
+           integer, intent(in) :: id
+           integer :: ierr
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+           how_many_extra_history_header_items = 0
+        end function how_many_extra_history_header_items
+
+
+        subroutine data_for_extra_history_header_items(id, n, names, vals, ierr)
+           integer, intent(in) :: id, n
+           character (len=maxlen_history_column_name) :: names(n)
+           real(dp) :: vals(n)
+           type(star_info), pointer :: s
+           integer, intent(out) :: ierr
+           ierr = 0
+           call star_ptr(id,s,ierr)
+           if(ierr/=0) return
+
+           ! here is an example for adding an extra history header item
+           ! also set how_many_extra_history_header_items
+           ! names(1) = 'mixing_length_alpha'
+           ! vals(1) = s% mixing_length_alpha
+
+        end subroutine data_for_extra_history_header_items
+
+
+        integer function how_many_extra_profile_header_items(id)
+           integer, intent(in) :: id
+           integer :: ierr
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+           how_many_extra_profile_header_items = 0
+        end function how_many_extra_profile_header_items
+
+
+        subroutine data_for_extra_profile_header_items(id, n, names, vals, ierr)
+           integer, intent(in) :: id, n
+           character (len=maxlen_profile_column_name) :: names(n)
+           real(dp) :: vals(n)
+           type(star_info), pointer :: s
+           integer, intent(out) :: ierr
+           ierr = 0
+           call star_ptr(id,s,ierr)
+           if(ierr/=0) return
+
+           ! here is an example for adding an extra profile header item
+           ! also set how_many_extra_profile_header_items
+           ! names(1) = 'mixing_length_alpha'
+           ! vals(1) = s% mixing_length_alpha
+
+        end subroutine data_for_extra_profile_header_items
+
+
+        ! returns either keep_going or terminate.
+        ! note: cannot request retry; extras_check_model can do that.
+        integer function extras_finish_step(id)
+           integer, intent(in) :: id
+           integer :: ierr
+           integer :: k
+           real :: epsgrav
+           real :: power_photo
+           real :: diff_lum
+           real :: max_eps_grav
+           real :: max_eps_nuc
+           real :: Lum
+           real :: diff_lum_arr(10000)
+           real :: eps_arr(10000)
+           integer :: iphoto
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+           extras_finish_step = keep_going
+
+           ! How to tell if a star is in thermal equilibrium
+           ! if (s% x_logical_ctrl(1)) then
+           if (.FALSE.) then
+           
+             iphoto = 10
+             ! epsgrav = dot_product(s% dm(1:s% nz), s% eps_grav(1:s% nz))/3.8418d33
+           
+             power_photo = dot_product(s% dm(1:s% nz), s% eps_nuc_categories(iphoto,1:s% nz))/3.8418d33
+             Lum = s% power_nuc_burn - power_photo
+           
+             ! max_eps_grav = maxval(abs(s% eps_grav))
+             max_eps_nuc = maxval(abs(s% eps_nuc))
+           
+             do k = 1, s% nz - 2
+               diff_lum_arr(k) = maxval((s% L(k + 1 : s% nz) / s% L(k)))
+             end do
+             
+             !do k = 1, s% nz
+             !  eps_arr(k) = -(s% energy(k) - s% energy_start(k)) / s% dt + s% P(k) / s% rho(k) * s% dlnd_dt(k)
+             !end do
+             
+             epsgrav = maxval(eps_arr)
+                        
+             ! write(*,*) epsgrav, Lum, max_eps_grav, max_eps_nuc
+             ! write(*,*) abs(epsgrav / Lum), max_eps_grav/max_eps_nuc, maxval(diff_lum_arr)
+             ! write(*,*) s% L_nuc_burn_total / s% L_surf, maxval(diff_lum_arr), s% L_nuc_burn_total, s% L_surf
+             ! write(*,*) s% power_nuc_burn, power_photo
+             ! write(*,*) "epsgrav",  dot_product(s% dS_dT_for_partials, s %T), Lum, dot_product(s% dS_dT_for_partials, s %T) / Lum, s% total_eps_grav
+             write(*,*) abs(1 - s% L_nuc_burn_total / s% L_surf), maxval(diff_lum_arr), abs(epsgrav / Lum)
+           
+             if (abs(1 - s% L_nuc_burn_total / s% L_surf) < 0.01 .AND. maxval(diff_lum_arr) < 1.01 .AND. abs(epsgrav / Lum) < 0.01) then
+                 write(*,*) abs(1 - s% L_nuc_burn_total / s% L_surf), maxval(diff_lum_arr), abs(epsgrav / Lum)
+                 if (s% x_logical_ctrl(1)) then
+                   extras_finish_step = terminate
+                 end if
+             end if
+           end if
+
+
+           ! see extras_check_model for information about custom termination codes
+           ! by default, indicate where (in the code) MESA terminated
+           if (extras_finish_step == terminate) s% termination_code = t_extras_finish_step
+        end function extras_finish_step
+
+
+        subroutine extras_after_evolve(id, ierr)
+           integer, intent(in) :: id
+           integer, intent(out) :: ierr
+           type (star_info), pointer :: s
+           ierr = 0
+           call star_ptr(id, s, ierr)
+           if (ierr /= 0) return
+        end subroutine extras_after_evolve
+
+      end module run_star_extras

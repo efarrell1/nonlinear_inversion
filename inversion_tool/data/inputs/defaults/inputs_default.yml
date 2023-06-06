@@ -1,0 +1,44 @@
+profile_param_min_vals:
+  mass: 2.2
+  xcore: 0.03
+  alpha: 0.0
+  slope_ratio: 2
+  rot: 0.0
+  mabund: 0.07
+  xsurface: 0.717
+  zval_lookup: 0.003
+  fa: 0.01
+  fb: 0.01 
+profile_param_max_vals:
+  mass: 8
+  xcore: 0.67
+  alpha: 0.5
+  slope_ratio: 5
+  rot: 0.8
+  mabund: 0.4
+  xsurface: 0.717
+  zval_lookup: 0.020
+  fa: 0.95
+  fb: 0.95
+profile_param_min_del_val:
+  mass: 0.01
+  xcore: 0.01
+  alpha: 0.01
+  slope_ratio: 0.01
+  rot: 0.01
+  mabund: 0.005
+  xsurface: 0.005
+  zval_lookup: 0.01
+  fa: 0.05
+  fb: 0.05
+profile_param_max_del_val:
+  mass: 2.0
+  xcore: 0.2
+  alpha: 0.05
+  slope_ratio: 0.5
+  rot: 0.2
+  mabund: 0.05
+  xsurface: 0.1
+  zval_lookup: 0.01
+  fa: 0.2
+  fb: 0.2

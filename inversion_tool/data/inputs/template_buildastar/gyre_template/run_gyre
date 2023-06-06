@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# Add GYRE variable
+export GYRE_DIR="/Users/eoin/Software/gyre-6.0.1"
+
+$GYRE_DIR/bin/gyre gyre.in
+
+echo "Frequencies Computed"
