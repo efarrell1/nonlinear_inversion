@@ -53,7 +53,7 @@ def get_obs(kic='3459297'):
     if type(kic) == int:
         return get_obs2(kic)
     else:
-        inv_tool_dir = '/Users/eoin/Documents/Snapshot_Seismic/inversion_tool'
+        inv_tool_dir = '/Users/eoin/Documents/Snapshot_Seismic/nonlinear_inversion'
 
         moddir = inv_tool_dir + '/inversion_tool/data/inputs/observations/kepler_' + str(kic) + '.csv'
 
@@ -70,7 +70,7 @@ def get_obs(kic='3459297'):
 
 
 def get_kic_name(kic_id):
-    input_file_dir = '/Users/eoin/Documents/Snapshot_Seismic/inversion_tool/inversion_tool/data/inputs/observations'
+    input_file_dir = '/Users/eoin/Documents/Snapshot_Seismic/nonlinear_inversion/inversion_tool/data/inputs/observations'
 
     file_path = input_file_dir + '/' + str(int(kic_id)) + '.json'
 

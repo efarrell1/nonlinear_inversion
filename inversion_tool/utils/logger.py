@@ -50,19 +50,23 @@ def log(log_file, *message, gap=True, bold=False):
         file.write(message)
 
 
-def log_jacobian(df_jacob, b, x):
+def log_jacobian(log_file, df_jacob, b, x):
     print("")
-    log(self.log_file, "Jacobian Matrix:", gap=False)
-    log(self.log_file, self.df_jacob)
+    log(log_file, "Jacobian Matrix:", gap=False)
+    log(log_file, df_jacob)
 
-    log(self.log_file, "B vector", ["{:.5f}".format(float(x)) for x in self.b], gap=False)
+    log(log_file, "B vector", ["{:.5f}".format(float(x)) for x in b], gap=False)
 
-    log(self.log_file, "Solution", self.x, gap=False)
+    log(log_file, "Solution", x, gap=False)
     # debug("Residuals", residuals, gap=False)
     # debug("Rank", rank)
 
-    log(self.log_file, "")
+    log(log_file, "")
 
+def log_initial_status(log_file, nmode_fit, m):
+    log(log_file, "Guess for radial order of first mode:", nmode_fit, gap=False)
+    log(log_file, "Assumption of l = 1 and m =", m)
+    # log(log_file, self.output_dir.split("/")[-1])
 
 
 

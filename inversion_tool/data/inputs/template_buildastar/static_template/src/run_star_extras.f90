@@ -263,6 +263,7 @@
            extras_finish_step = keep_going
 
            ! How to tell if a star is in thermal equilibrium
+           ! Not used
            ! if (s% x_logical_ctrl(1)) then
            if (.FALSE.) then
            

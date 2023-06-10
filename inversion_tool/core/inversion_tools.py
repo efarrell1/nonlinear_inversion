@@ -16,11 +16,12 @@ import json
 import re
 import vaex
 from glob import glob
+import itertools
 
 from scipy.optimize import curve_fit, minimize
 from scipy.signal import savgol_filter, argrelextrema
 from scipy import interpolate
-
+from natsort import natsorted
 
 from .mesa_reader import MesaData as MR
 from .run_build_star import generate_snapshot_model, find_nearest_model, generate_snapshot_name
@@ -31,7 +32,7 @@ from .plotter import plot_each_timestep, plot_main_iteration_ps, plot_fit_params
 
 from ..utils.tools import load_parameters_from_yaml, save_parameters_to_yaml, read_gyre_model, compute_buoy_radius
 from ..utils.rename_inlist import edit_inlist
-from ..utils.logger import log_parameters, debug, log, log_separator
+from ..utils.logger import log_parameters, debug, log, log_separator, log_initial_status
 
 import shutil
 
@@ -42,7 +43,7 @@ msun = 1.3271244e26 / 6.67430e-8
 rsun = 6.957e10
 
 
-inv_tool_dir = '/Users/eoin/Documents/Snapshot_Seismic/inversion_tool'
+inv_tool_dir = '/Users/eoin/Documents/Snapshot_Seismic/nonlinear_inversion'
 
 
 
@@ -68,7 +69,7 @@ class Inverter():
 
         # Set output variable names
         self.model_name = self.inputs['model_name']
-        self.output_dir = self.run_dir + '/' + self.model_name
+        self.output_dir = self.run_dir + '/outputs/' + self.model_name
         
         if os.path.exists(self.output_dir):
             j = 2
@@ -89,6 +90,7 @@ class Inverter():
 
         self.build_fun = self.inputs['build_fun']
         self.m = self.inputs['m']
+        self.nmode_fit = self.inputs['nmode_fit']
         self.n_iter = self.inputs['n_iteration']
         self.nmin = self.inputs['nmin']
         self.nmax = self.inputs['nmax']
@@ -115,14 +117,7 @@ class Inverter():
         
         self.delta_xvals = {}
 
-
-     
-    def run(self):
-        # Runs the inversion
-        self.do_before_inversion()
-        self.do_inversion()
-
-
+    
     def run_grid(self):
         # Runs a different mode to the inversion where we just try different parameters
         vary_params = self.inputs['vary_profile_parameters']
@@ -132,7 +127,6 @@ class Inverter():
         keys = vary_params.keys()
         values = vary_params.values()
 
-        import itertools
 
         combinations = [dict(zip(vary_params.keys(), combination)) for combination
                     in itertools.product(*vary_params.values())]
@@ -148,23 +142,59 @@ class Inverter():
             self.profile_parameters = ref_profile_parameters
             self.previous_iterations_gyre_subdir = [self.gyre_subdir]
 
+     
+    def run(self):
+        # Main mode to run the inversion
+        self.do_before_inversion()
+        self.do_inversion()
 
 
     def do_before_inversion(self):
         # Things to do before an inversion
 
-        log(self.log_file, self.output_dir.split("/")[-1])
-        
+        # Copy input file to output directory for future reference       
         shutil.copy(self.input_file, self.output_dir + '/inputs.yml')
 
+        # Create output file or read from csv if already exists
         try:
             self.df_out = pd.read_csv(self.output_file, index_col='modname')
         except OSError:
             self.create_output_df()
 
-        self.log_initial_status()
+        # Log initial parameters and status
+        log_initial_status(self.log_file, self.nmode_fit, self.m)
 
     
+    def do_inversion(self):
+        # Iteratively tries to converge to best model
+
+        # Compute model with initial parameters
+        log(self.log_file, 'Computing starting model')
+        self.do_inversion_step()
+
+        self.previous_iterations_gyre_subdir = [self.gyre_subdir]
+
+        self.n_jacob_iter = 0
+
+        if self.inputs['plot_outputs']:
+            plot_main_iteration_ps(self)
+        
+        log_separator(self.log_file)
+
+        for j in self.inputs['jacobian_iterations']:
+
+            self.jacob_option = j
+            self.do_jacobian_step()
+            self.previous_iterations_gyre_subdir.append(self.gyre_subdir)
+            self.n_jacob_iter = self.n_jacob_iter + 1
+
+            if self.inputs['plot_outputs']:
+                plot_main_iteration_ps(self)
+
+        log(self.log_file, "Final Parameters:", gap=False)
+        log_parameters(self.profile_parameters)
+
+
     def do_inversion_step(self):
         self.create_static_dir(False)
 
@@ -182,12 +212,6 @@ class Inverter():
 
     def do_after_step(self):
         pass
-
-
-    def log_initial_status(self):
-        log(self.log_file, "Guess for radial order of first mode:", self.inputs['nmode_fit'], gap=False)
-        log(self.log_file, "Assumption of l = 1 and m =", self.inputs['m'])
-
 
     def do_jacobian_step(self):
 
@@ -223,49 +247,15 @@ class Inverter():
 
 
 
-    def do_inversion(self):
-
-        log(self.log_file, 'Starting Inversion')
-
-        log(self.log_file, 'Computing starting model')
-        self.do_inversion_step()
-        self.previous_iterations_gyre_subdir = [self.gyre_subdir]
-
-        self.n_jacob_iter = 0
-
-        if self.inputs['plot_outputs']:
-            plot_main_iteration_ps(self)
-        
-        log_separator(self.log_file)
-
-        for j in self.inputs['jacobian_iterations']:
-
-            self.jacob_option = j
-            self.do_jacobian_step()
-            self.previous_iterations_gyre_subdir.append(self.gyre_subdir)
-            self.n_jacob_iter = self.n_jacob_iter + 1
-
-            if self.inputs['plot_outputs']:
-                plot_main_iteration_ps(self)
-
-        log(self.log_file, "Final Parameters:", gap=False)
-        log_parameters(self.profile_parameters)
-
 
     def get_jacobian_column(self, profile_param, ref_params, non_zero_params):
-        # Computes column for Jacobian
+        # Computes column for Jacobian for a given profile parameter
 
         self.profile_param = profile_param
 
         # For the initial guess
         if self.jacobian is None:
             new_mass = np.maximum(0.1, ((self.obs_vals['P0'] - ref_params['P0'])/0.05) * 0.1)
-            # initial_delta_vals = {'rot':    ((self.obs_slope - ref_params['slope'])/500) * 0.14,
-            #                       'xcore':  + 0.02,
-            #                       'alpha':  ((self.obs_a - ref_params['A'])/1000) * 0.08,
-            #                       'mass':   new_mass,
-            #                       'mabund': 0.005,
-            #                       'slope_ratio': 0.1} 
 
             initial_delta_vals = {'rot':    0.02,
                                   'xcore':  + 0.02,
@@ -275,10 +265,10 @@ class Inverter():
                                   'slope_ratio': 0.1}  
 
             delta_val = initial_delta_vals[profile_param]
+        
         # In all other cases, the Jacobian from the previous timestep is used to calculate the delta value
         else:
             # Solve Jacobian with new b and get value
-            # print(self.b)
             self.compute_b_for_jacobian()
             x, residuals, rank, singular_values = np.linalg.lstsq(self.jacobian, self.b, rcond=None)
             param_index = self.inputs['jacobian_profile_params'].index(profile_param)
@@ -365,42 +355,46 @@ class Inverter():
         self.ref_params = dict(self.df_out.iloc[-1])
 
 
+    def setup_jacobian(self):
+
+        jacobian_profile_params = self.inputs['jacobian_profile_params']
+
+        self.nonzero_jacobian_entries = jacob_param_options[self.jacob_option]
+
+        for param in jacobian_profile_params:
+            if param not in self.nonzero_jacobian_entries:
+                self.nonzero_jacobian_entries[param] = []
+
+        self.jacobian_profile_params = [param for param in jacobian_profile_params if len(self.nonzero_jacobian_entries[param]) > 0]
+
+        self.jacobian_period_spacing_params = natsorted(list(set(value for sublist in self.nonzero_jacobian_entries.values() for value in sublist)))
+
+
     def compute_jacobian(self, columns=['rot', 'alpha', 'mass']):
         log(self.log_file, "Computing Jacobian Iteration", self.n_jacob_iter)
         log_parameters(self.profile_parameters)
 
-        jacobian_profile_params = self.inputs['jacobian_profile_params']
+        self.setup_jacobian()
 
-        # fit_params2 = dict(self.df_out.iloc[-1])
-        # jacob_param_options['xcore'] = {"xcore": ['nmin0', 'nmin1', 'nmin2', 'nmin3']}
+        jacobian_columns = []
 
+        for param in self.jacobian_profile_params:
+            column = self.get_jacobian_column(param, self.ref_params, self.nonzero_jacobian_entries[param])
+            jacobian_columns.append(column)
 
-        non_zero_param_dict = jacob_param_options[self.jacob_option]
+        # Convert columns to DataFrame
+        df = pd.DataFrame(jacobian_columns)
 
-        jacobian_profile_params = [param for param in jacobian_profile_params if len(non_zero_param_dict[param]) > 0]
+        # Reorder the rows to alphabetical order for ease of viewing
+        df = df[self.jacobian_period_spacing_params]
 
-        for param in jacobian_profile_params:
-            if param not in non_zero_param_dict:
-                non_zero_param_dict[param] = []
-
-        from natsort import natsorted
-
-        jacobian_period_spacing_params = natsorted(list(set(value for sublist in non_zero_param_dict.values() for value in sublist)))
-
-        jacob_list_cols = [self.get_jacobian_column(param, self.ref_params, non_zero_param_dict[param])
-                           for param in jacobian_profile_params]
-
-        df = pd.DataFrame(jacob_list_cols)
-
-        df = df[jacobian_period_spacing_params]
+        # For logging purposes
+        self.jacob_log = df.T
+        self.jacob_log.columns = self.jacobian_profile_params
 
         jacob = df.values.T
-
-        self.df_jacob = df.T
-        self.df_jacob.columns = jacobian_profile_params
-
         self.jacobian = jacob
-        self.jacobian_period_spacing_params = jacobian_period_spacing_params
+        self.jacobian_period_spacing_params = self.jacobian_period_spacing_params
 
 
     def compute_b_for_jacobian(self):
@@ -415,7 +409,7 @@ class Inverter():
     def log_jacobian(self):
         log(self.log_file, "")
         log(self.log_file, "Jacobian Matrix:", gap=False)
-        log(self.log_file, self.df_jacob)
+        log(self.log_file, self.jacob_log)
 
         vals_mod = [self.obs_vals[key] for key in self.jacobian_period_spacing_params]
         vals_ref = [self.ref_params[key] for key in self.jacobian_period_spacing_params]
@@ -456,7 +450,7 @@ class Inverter():
 
             table_row.append([new_val, old_val, delta_val])
 
-        self.df_diff_profile_params = pd.DataFrame(table_row, columns=[ 'New', 'Old', 'Change'], index=self.inputs['jacobian_profile_params'])
+        self.df_diff_profile_params = pd.DataFrame(table_row, columns=[ 'New', 'Old', 'Change'], index=self.jacobian_profile_params)
 
         self.log_jacobian()
 
@@ -501,21 +495,11 @@ class Inverter():
             lookup_table_dir = database_dir + '/lookup_table'
 
             params = self.profile_parameters
-            if 'xcore' in params:
-                starting_model = find_nearest_model(params['mass'],
-                                            params['zval_lookup'],
-                                            params['xcore'],
-                                            lookup_table_dir)
-            elif 'dx_core' in params:
-                starting_model = find_nearest_model(params['mass'],
-                                            params['zval_lookup'],
-                                            params['xsurface'] - params['dx_core'],
-                                            lookup_table_dir)
-            else:
-                log(self.log_file, "confused about xcore value")
-
+            starting_model = find_nearest_model(params['mass'],
+                                        params['zval_lookup'],
+                                        params['xcore'],
+                                        lookup_table_dir)
             return starting_model
-
 
     def get_best_model(self):
         df = self.df_out

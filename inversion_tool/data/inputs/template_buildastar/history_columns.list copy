@@ -1,0 +1,72 @@
+
+model_number 
+num_zones 
+star_age 
+log_dt 
+star_mass 
+log_xmstar 
+log_abs_mdot 
+
+mass_conv_core 
+conv_mx1_top
+conv_mx1_bot
+conv_mx2_top
+conv_mx2_bot
+mx1_top
+mx1_bot
+mx2_top
+mx2_bot
+log_LH 
+log_LHe 
+log_LZ 
+log_Lnuc 
+pp
+cno
+tri_alfa
+c_alpha
+n_alpha
+o_alpha
+ne_alpha
+
+c12_c12
+epsnuc_M_1 
+epsnuc_M_2 
+epsnuc_M_3 
+epsnuc_M_4 
+epsnuc_M_5 
+epsnuc_M_6 
+epsnuc_M_7 
+epsnuc_M_8 
+
+he_core_mass
+co_core_mass
+one_core_mass
+fe_core_mass
+neutron_rich_core_mass
+envelope_mass 
+Teff
+log_Teff
+log_L 
+log_R 
+log_g
+v_div_csound_surf 
+log_center_T
+log_center_Rho
+log_center_P
+log_cntr_P
+log_cntr_Rho
+log_cntr_T
+center_mu
+center_ye
+center_abar
+
+center he4
+center c12
+center o16
+
+surface c12
+surface o16
+
+total_mass h1
+total_mass he4
+
